@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 
 from prefect import task
+from prefect.cache_policies import NO_CACHE
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ def _parse_lol_match(raw_json: str) -> list[dict]:
     return rows
 
 
-@task(name="transform-lol-silver", retries=1)
+@task(name="transform-lol-silver", retries=1, cache_policy=NO_CACHE)
 def transform_lol_silver(con) -> int:
     """
     Read all unprocessed rows from raw_lol_matches,
@@ -186,7 +187,7 @@ def _parse_cs_match(raw_json: str) -> list[dict]:
     return rows
 
 
-@task(name="transform-cs-silver", retries=1)
+@task(name="transform-cs-silver", retries=1, cache_policy=NO_CACHE)
 def transform_cs_silver(con) -> int:
     """Bronze → silver for CS2 matches."""
     unprocessed = con.execute("""
@@ -228,7 +229,7 @@ def transform_cs_silver(con) -> int:
 # Gold aggregations
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-@task(name="aggregate-lol-gold", retries=1)
+@task(name="aggregate-lol-gold", retries=1, cache_policy=NO_CACHE)
 def aggregate_lol_gold(con) -> int:
     """
     Rebuild lol_player_agg from lol_match_stats.
@@ -259,7 +260,7 @@ def aggregate_lol_gold(con) -> int:
     return count
 
 
-@task(name="aggregate-cs-gold", retries=1)
+@task(name="aggregate-cs-gold", retries=1, cache_policy=NO_CACHE)
 def aggregate_cs_gold(con) -> int:
     """Rebuild cs_team_agg from cs_match_stats."""
     con.execute("DELETE FROM cs_team_agg")

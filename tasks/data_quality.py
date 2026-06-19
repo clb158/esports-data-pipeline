@@ -17,6 +17,7 @@ from typing import Optional
 
 import duckdb
 from prefect import task
+from prefect.cache_policies import NO_CACHE
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def _log_check(
     )
 
 
-@task(name="dq-row-count", retries=1)
+@task(name="dq-row-count", retries=1, cache_policy=NO_CACHE)
 def check_row_count(
     con: duckdb.DuckDBPyConnection,
     table: str,
@@ -57,7 +58,7 @@ def check_row_count(
     return passed
 
 
-@task(name="dq-null-rate", retries=1)
+@task(name="dq-null-rate", retries=1, cache_policy=NO_CACHE)
 def check_null_rate(
     con: duckdb.DuckDBPyConnection,
     table: str,
@@ -82,7 +83,7 @@ def check_null_rate(
     return passed
 
 
-@task(name="dq-duplicate-pk", retries=1)
+@task(name="dq-duplicate-pk", retries=1, cache_policy=NO_CACHE)
 def check_no_duplicates(
     con: duckdb.DuckDBPyConnection,
     table: str,
@@ -106,7 +107,7 @@ def check_no_duplicates(
     return passed
 
 
-@task(name="dq-value-range", retries=1)
+@task(name="dq-value-range", retries=1, cache_policy=NO_CACHE)
 def check_value_range(
     con: duckdb.DuckDBPyConnection,
     table: str,
@@ -139,7 +140,7 @@ def check_value_range(
     return passed
 
 
-@task(name="dq-freshness", retries=1)
+@task(name="dq-freshness", retries=1, cache_policy=NO_CACHE)
 def check_freshness(
     con: duckdb.DuckDBPyConnection,
     table: str,

@@ -2,6 +2,8 @@
 Pipeline configuration — all knobs in one place.
 Swap in real API keys via environment variables.
 """
+from dotenv import load_dotenv
+load_dotenv()
 import os
 from pathlib import Path
 
@@ -17,7 +19,6 @@ DB_PATH = str(WAREHOUSE_DIR / "vg_analytics.duckdb")
 RIOT_API_KEY = os.getenv("RIOT_API_KEY", "RGAPI-demo-key")
 RIOT_REGION   = os.getenv("RIOT_REGION", "na1")          # na1 | euw1 | kr …
 RIOT_BASE_URL = f"https://{RIOT_REGION}.api.riotgames.com"
-RIOT_MATCH_URL = "https://americas.api.riotgames.com"    # routing for match-v5
 
 # Counter-Strike 2 (PandaScore — free tier, 1 000 req/hr)
 PANDASCORE_TOKEN = os.getenv("PANDASCORE_TOKEN", "demo_token")

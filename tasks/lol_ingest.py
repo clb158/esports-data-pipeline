@@ -20,17 +20,33 @@ from typing import Optional
 
 import requests
 from prefect import task
+from prefect.cache_policies import NO_CACHE
+
 
 from config.settings import (
     RIOT_API_KEY,
     RIOT_BASE_URL,
-    RIOT_MATCH_URL,
     RIOT_REGION,
     LOL_MAX_MATCHES,
     REQUEST_TIMEOUT,
 )
 
+
 log = logging.getLogger(__name__)
+
+REGION_ROUTING = {
+    "na1":  "americas",
+    "euw1": "europe",
+    "eun1": "europe",
+    "kr":   "asia",
+    "jp1":  "asia",
+    "br1":  "americas",
+    "la1":  "americas",
+    "la2":  "americas",
+}
+
+CONTINENT = REGION_ROUTING.get(RIOT_REGION.lower(), "americas")
+MATCH_URL  = f"https://{CONTINENT}.api.riotgames.com"
 
 HEADERS = {"X-Riot-Token": RIOT_API_KEY}
 
@@ -59,14 +75,9 @@ def _get(url: str, params: Optional[dict] = None) -> dict:
 
 # ── Tasks ─────────────────────────────────────────────────────────────────
 
-@task(name="extract-lol-summoner", retries=2, retry_delay_seconds=30)
-def extract_lol_summoner(summoner_name: str, tag_line: str = "NA1") -> Optional[str]:
-    """
-    Resolve summoner name + tag → PUUID via Riot Account API.
-
-    Returns PUUID string, or None if not found.
-    """
-    url = f"https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{summoner_name}/{tag_line}"
+@task(name="extract-lol-summoner", retries=2, retry_delay_seconds=30, cache_policy=NO_CACHE)
+def extract_lol_summoner(summoner_name: str, tag_line: str = "NA1", continent: str = "americas") -> Optional[str]:
+    url = f"https://{continent}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{summoner_name}/{tag_line}"
     data = _get(url)
     puuid = data.get("puuid")
     if puuid:
@@ -76,19 +87,14 @@ def extract_lol_summoner(summoner_name: str, tag_line: str = "NA1") -> Optional[
     return puuid
 
 
-@task(name="extract-lol-match-ids", retries=2, retry_delay_seconds=30)
+@task(name="extract-lol-match-ids", retries=2, retry_delay_seconds=30, cache_policy=NO_CACHE)
 def extract_lol_match_ids(
     puuid: str,
+    continent: str = "americas",
     count: int = LOL_MAX_MATCHES,
-    queue_id: int = 420,         # 420 = Solo/Duo Ranked
+    queue_id: int = 420,
 ) -> list[str]:
-    """
-    Pull the last *count* ranked match IDs for *puuid*.
-
-    queue_id options:
-      420 = Solo/Duo Ranked | 440 = Flex | 450 = ARAM | 400 = Normal Draft
-    """
-    url = f"{RIOT_MATCH_URL}/lol/match/v5/matches/by-puuid/{puuid}/ids"
+    url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
     params = {"queue": queue_id, "count": count}
     ids = _get(url, params=params)
     if isinstance(ids, list):
@@ -97,10 +103,9 @@ def extract_lol_match_ids(
     return []
 
 
-@task(name="extract-lol-match", retries=2, retry_delay_seconds=15)
-def extract_lol_match(match_id: str) -> Optional[dict]:
-    """Fetch full match JSON for a single match ID."""
-    url = f"{RIOT_MATCH_URL}/lol/match/v5/matches/{match_id}"
+@task(name="extract-lol-match", retries=2, retry_delay_seconds=15, cache_policy=NO_CACHE)
+def extract_lol_match(match_id: str, continent: str = "americas") -> Optional[dict]:
+    url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/{match_id}"
     data = _get(url)
     if data:
         log.debug("Fetched match %s", match_id)
@@ -109,7 +114,7 @@ def extract_lol_match(match_id: str) -> Optional[dict]:
     return data or None
 
 
-@task(name="load-raw-lol-matches", retries=1)
+@task(name="load-raw-lol-matches", retries=1, cache_policy=NO_CACHE)
 def load_raw_lol_matches(matches: list[dict], con) -> int:
     """
     Upsert raw match JSON into bronze table raw_lol_matches.
@@ -151,33 +156,31 @@ def load_raw_lol_matches(matches: list[dict], con) -> int:
     return inserted
 
 
-@task(name="extract-lol-batch", retries=1)
+@task(name="extract-lol-batch", retries=1, cache_policy=NO_CACHE)
 def extract_lol_batch(
-    summoners: list[dict],   # [{"name": "Faker", "tag": "T1"}, …]
+    summoners: list[dict],
     max_matches_each: int = 20,
 ) -> list[dict]:
-    """
-    Convenience task: given a list of summoner dicts, pull all their recent
-    matches and return a deduplicated flat list of match JSON objects.
-    """
     seen_ids: set[str] = set()
     all_matches: list[dict] = []
 
     for s in summoners:
-        name = s.get("name", "")
-        tag  = s.get("tag", "NA1")
+        name   = s.get("name", "")
+        tag    = s.get("tag", "NA1")
+        region = s.get("region", RIOT_REGION).lower()
+        continent = REGION_ROUTING.get(region, "americas")
 
-        puuid = extract_lol_summoner.fn(name, tag)
+        puuid = extract_lol_summoner.fn(name, tag, continent)
         if not puuid:
             continue
 
-        ids = extract_lol_match_ids.fn(puuid, count=max_matches_each)
+        ids = extract_lol_match_ids.fn(puuid, continent, count=max_matches_each)
         for mid in ids:
             if mid in seen_ids:
                 continue
             seen_ids.add(mid)
-            time.sleep(0.05)  # 50 ms between requests ≈ 20 req/sec
-            match = extract_lol_match.fn(mid)
+            time.sleep(0.05)
+            match = extract_lol_match.fn(mid, continent)
             if match:
                 all_matches.append(match)
 

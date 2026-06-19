@@ -18,7 +18,6 @@ import uuid
 from datetime import datetime, timezone
 
 from prefect import flow
-from prefect.schedules import CronSchedule
 
 from config.settings import (
     LOL_INGEST_CRON,
@@ -50,9 +49,10 @@ log = logging.getLogger(__name__)
 
 # Summoner watch-list — swap these for real accounts
 WATCH_LIST = [
-    {"name": "Faker",     "tag": "T1"},
-    {"name": "Doublelift","tag": "100"},
-    {"name": "Caps",      "tag": "EUW"},
+    {"name": "Hide on bush",   "tag": "KR1",  "region": "kr"},    # KR
+    {"name": "Rekkles",      "tag": "1996", "region": "euw"},   # EUW
+    {"name": "G2 Caps",    "tag": "1323", "region": "euw"},    # EUW
+    {"name": "Caedrel", "tag": "sally", "region": "euw"},   # EUW
 ]
 
 

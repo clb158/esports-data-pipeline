@@ -18,6 +18,7 @@ from typing import Optional
 
 import requests
 from prefect import task
+from prefect.cache_policies import NO_CACHE
 
 from config.settings import (
     PANDASCORE_TOKEN,
@@ -94,7 +95,7 @@ def extract_cs_match_detail(match_id: int) -> Optional[dict]:
     return None
 
 
-@task(name="load-raw-cs-matches", retries=1)
+@task(name="load-raw-cs-matches", retries=1, cache_policy=NO_CACHE)
 def load_raw_cs_matches(matches: list[dict], con) -> int:
     """
     Upsert raw CS2 match JSON into bronze table raw_cs_matches.
