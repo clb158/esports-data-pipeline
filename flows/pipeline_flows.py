@@ -1,15 +1,23 @@
 """
 Prefect flows — the orchestration layer.
 
-Three scheduled flows:
-  lol_ingest_flow     : every 6 hrs — ingest LoL match data
-  cs_ingest_flow      : every 6 hrs (offset 30m) — ingest CS2 match data
-  transform_flow      : every 12 hrs — bronze → silver → gold transforms + DQ
+One deployable entrypoint, `main()`, calls three subflows in sequence:
+  lol_ingest_flow     : ingest LoL match data
+  cs_ingest_flow      : ingest CS2 match data
+  transform_flow      : bronze → silver → gold transforms + DQ checks
+
+Each subflow still appears individually in the Prefect UI with its own
+logs and run history — `main()` just wires them together as one unit so
+the whole pipeline can be deployed and scheduled with a single command.
 
 Run locally:
-  python -m flows.pipeline_flows        # runs all three flows once
-  prefect server start                  # then open http://127.0.0.1:4200
-  python -m flows.pipeline_flows --deploy  # register schedules
+  python -m flows.pipeline_flows            # runs main() once
+
+Deploy (single entrypoint, industry-standard pattern):
+  uvx prefect-cloud deploy flows/pipeline_flows.py:main \\
+    --name esports-pipeline-production \\
+    --from https://github.com/clb158/esports-data-pipeline \\
+    --env RIOT_API_KEY=... --env PANDASCORE_TOKEN=...
 """
 
 import logging
@@ -18,6 +26,7 @@ import uuid
 from datetime import datetime, timezone
 
 from prefect import flow
+from prefect.schedules import CronSchedule
 
 from config.settings import (
     LOL_INGEST_CRON,
@@ -49,10 +58,9 @@ log = logging.getLogger(__name__)
 
 # Summoner watch-list — swap these for real accounts
 WATCH_LIST = [
-    {"name": "Hide on bush",   "tag": "KR1",  "region": "kr"},    # KR
-    {"name": "Rekkles",      "tag": "1996", "region": "euw"},   # EUW
-    {"name": "G2 Caps",    "tag": "1323", "region": "euw"},    # EUW
-    {"name": "Caedrel", "tag": "sally", "region": "euw"},   # EUW
+    {"name": "Faker",     "tag": "T1"},
+    {"name": "Doublelift","tag": "100"},
+    {"name": "Caps",      "tag": "EUW"},
 ]
 
 
@@ -208,12 +216,39 @@ def transform_flow():
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Main orchestrator — single deployable entrypoint
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@flow(
+    name="esports-pipeline-main",
+    description="End-to-end run: ingest LoL + CS2 data, then transform Bronze→Silver→Gold with DQ checks.",
+    log_prints=True,
+)
+def main(
+    summoners: list[dict] | None = None,
+    max_per_player: int = 20,
+    cs_match_count: int = 100,
+):
+    """
+    Single entrypoint for the whole pipeline. Calls each stage as a subflow,
+    so every stage still gets its own run history and logs in the Prefect UI,
+    but the pipeline is deployed and scheduled as one unit.
+
+    This is the function referenced by `prefect-cloud deploy`:
+        flows/pipeline_flows.py:main
+    """
+    log.info("Starting esports-pipeline-main run")
+
+    lol_ingest_flow(summoners=summoners, max_per_player=max_per_player)
+    cs_ingest_flow(count=cs_match_count)
+    transform_flow()
+
+    log.info("esports-pipeline-main run complete")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # CLI entry-point
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 if __name__ == "__main__":
-    log.info("Running all flows sequentially (local mode)…")
-    lol_ingest_flow()
-    cs_ingest_flow()
-    transform_flow()
-    log.info("Pipeline run complete.")
+    main()
