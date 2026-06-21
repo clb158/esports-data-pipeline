@@ -98,15 +98,19 @@ def extract_lol_match_ids(
     continent: str = CONTINENT,
     count: int = LOL_MAX_MATCHES,
     queue_id: int = 420,         # 420 = Solo/Duo Ranked
+    start_time: Optional[int] = None,  # 👈 Add this parameter
 ) -> list[str]:
     """
     Pull the last *count* ranked match IDs for *puuid*.
-
-    queue_id options:
-      420 = Solo/Duo Ranked | 440 = Flex | 450 = ARAM | 400 = Normal Draft
+    Only fetches matches after start_time (epoch seconds).
     """
     url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
     params = {"queue": queue_id, "count": count}
+    
+    # 👈 Tell Riot API to only give us matches since this timestamp
+    if start_time:
+        params["startTime"] = start_time
+
     ids = _get(url, params=params)
     if isinstance(ids, list):
         log.info("Fetched %d match IDs for puuid %s…", len(ids), puuid[:8])
@@ -114,16 +118,42 @@ def extract_lol_match_ids(
     return []
 
 
-@task(name="extract-lol-match", retries=2, retry_delay_seconds=15, cache_policy=NO_CACHE)
-def extract_lol_match(match_id: str, continent: str = CONTINENT) -> Optional[dict]:
-    """Fetch full match JSON for a single match ID."""
-    url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/{match_id}"
-    data = _get(url)
-    if data:
-        log.debug("Fetched match %s", match_id)
-    else:
-        log.warning("No data returned for match %s", match_id)
-    return data or None
+@task(name="extract-lol-batch", retries=1, cache_policy=NO_CACHE)
+def extract_lol_batch(
+    summoners: list[dict],   # [{"name": "Faker", "tag": "T1", "region": "kr"}, …]
+    max_matches_each: int = 20,
+    start_time: Optional[int] = None,  # 👈 Add this parameter to pass downward
+) -> list[dict]:
+    """
+    Convenience task: given a list of summoner dicts, pull all their recent
+    matches incrementally and return a deduplicated flat list of match JSON objects.
+    """
+    seen_ids: set[str] = set()
+    all_matches: list[dict] = []
+
+    for s in summoners:
+        name   = s.get("name", "")
+        tag    = s.get("tag", "NA1")
+        region = s.get("region", RIOT_REGION).lower()
+        continent = REGION_ROUTING.get(region, "americas")
+
+        puuid = extract_lol_summoner.fn(name, tag, continent)
+        if not puuid:
+            continue
+
+        # 👈 Forward the start_time filter here
+        ids = extract_lol_match_ids.fn(puuid, continent, count=max_matches_each, start_time=start_time)
+        for mid in ids:
+            if mid in seen_ids:
+                continue
+            seen_ids.add(mid)
+            time.sleep(0.05)  # 50 ms between requests ≈ 20 req/sec
+            match = extract_lol_match.fn(mid, continent)
+            if match:
+                all_matches.append(match)
+
+    log.info("Batch ingest complete — %d unique matches fetched", len(all_matches))
+    return all_matches
 
 
 @task(name="load-raw-lol-matches", retries=1, cache_policy=NO_CACHE)

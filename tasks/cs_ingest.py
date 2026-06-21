@@ -60,19 +60,24 @@ def _ps_get(endpoint: str, params: Optional[dict] = None) -> list | dict:
 def extract_cs_matches(
     count: int = CS_MAX_MATCHES,
     tournament_slug: Optional[str] = None,  # e.g. "cs-go-esl-pro-league-season-20"
+    since_id: int = 0,                      # 👈 Add this new parameter
 ) -> list[dict]:
     """
     Pull the most recent completed CS2 pro matches from PandaScore.
-
-    Returns a list of raw match dicts.
+    Filters out matches with an ID less than or equal to since_id.
     """
     params: dict = {
         "page[size]": min(count, 100),   # max page size = 100
-        "sort": "-end_at",               # newest first
+        "sort": "id",                    # 👈 CHANGE sorting from "-end_at" to "id" for clean linear tracking
         "filter[status]": "finished",
     }
+    
     if tournament_slug:
         params["filter[tournament_slug]"] = tournament_slug
+        
+    # 👈 Add the incremental filter if we have a valid previous ID
+    if since_id > 0:
+        params["filter[id][gt]"] = since_id
 
     endpoint = "/csgo/matches"
     data = _ps_get(endpoint, params=params)

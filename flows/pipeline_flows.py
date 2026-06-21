@@ -84,7 +84,7 @@ def _log_run(con, run_id, flow_name, status, rows_in=0, rows_out=0, error=""):
     log_prints=True,
 )
 def lol_ingest_flow(summoners: list[dict] | None = None, max_per_player: int = 20):
-    """Ingest League of Legends ranked match data."""
+    """Ingest League of Legends ranked match data incrementally."""
     run_id = str(uuid.uuid4())
     init_warehouse()
     con = get_connection()
@@ -93,7 +93,25 @@ def lol_ingest_flow(summoners: list[dict] | None = None, max_per_player: int = 2
     log.info("Starting LoL ingest flow for %d summoners", len(summoners))
 
     try:
-        matches = extract_lol_batch(summoners=summoners, max_matches_each=max_per_player)
+        # 1. 👈 Look up the highest match timestamp from your silver stats table
+        start_epoch = None
+        try:
+            result = con.execute("SELECT MAX(match_ts) FROM lol_match_stats").fetchone()
+            if result and result[0]:
+                # Convert datetime object to epoch seconds integer
+                start_epoch = int(result[0].timestamp())
+        except Exception:
+            # Fallback if the table is brand new or silver hasn't run yet
+            start_epoch = None
+
+        if start_epoch:
+            log.info(f"Incremental point found: Filtering for matches starting after epoch timestamp {start_epoch}")
+        else:
+            log.info("No prior matches found in silver. Performing full history fetch.")
+
+        # 2. 👈 Pass the start_time down into the extraction engine
+        matches = extract_lol_batch(summoners=summoners, max_matches_each=max_per_player, start_time=start_epoch)
+        
         rows_in = load_raw_lol_matches(matches=matches, con=con)
         _log_run(con, run_id, "lol-ingest-flow", "success", rows_in=rows_in)
         log.info("✅ LoL ingest complete — %d new matches loaded", rows_in)
@@ -115,15 +133,27 @@ def lol_ingest_flow(summoners: list[dict] | None = None, max_per_player: int = 2
     log_prints=True,
 )
 def cs_ingest_flow(count: int = 100):
-    """Ingest Counter-Strike 2 professional match data."""
+    """Ingest Counter-Strike 2 professional match data incrementally."""
     run_id = str(uuid.uuid4())
     init_warehouse()
     con = get_connection()
 
-    log.info("Starting CS2 ingest flow — fetching up to %d matches", count)
+    log.info("Starting CS2 ingest flow — checking warehouse for latest match ID")
 
     try:
-        matches = extract_cs_matches(count=count)
+        # 1. 👈 Look up the highest match_id we have stored in the raw table
+        try:
+            result = con.execute("SELECT MAX(match_id) FROM raw_cs_matches").fetchone()
+            since_id = result[0] if result and result[0] else 0
+        except Exception:
+            # Fallback to 0 if the table is completely empty, brand new, or hasn't been initialized
+            since_id = 0
+
+        log.info("Highest existing CS2 match ID in warehouse: %s", since_id)
+
+        # 2. 👈 Pass since_id into your updated task
+        matches = extract_cs_matches(count=count, since_id=since_id)
+        
         rows_in = load_raw_cs_matches(matches=matches, con=con)
         _log_run(con, run_id, "cs-ingest-flow", "success", rows_in=rows_in)
         log.info("✅ CS2 ingest complete — %d new matches loaded", rows_in)
