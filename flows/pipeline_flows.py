@@ -26,7 +26,6 @@ import uuid
 from datetime import datetime, timezone
 
 from prefect import flow
-from prefect.schedules import CronSchedule
 
 from config.settings import (
     LOL_INGEST_CRON,
