@@ -259,11 +259,6 @@ def main(
 
     log.info("esports-pipeline-main run complete")
 
-    lol_ingest_flow(summoners=summoners, max_per_player=max_per_player)
-    cs_ingest_flow(count=cs_match_count)
-    transform_flow()
-
-    log.info("esports-pipeline-main run complete")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
