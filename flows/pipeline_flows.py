@@ -224,6 +224,15 @@ def transform_flow():
     description="End-to-end run: ingest LoL + CS2 data, then transform Bronze→Silver→Gold with DQ checks.",
     log_prints=True,
 )
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Main orchestrator — single deployable entrypoint
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@flow(
+    name="esports-pipeline-main",
+    description="End-to-end run: ingest LoL + CS2 data, then transform Bronze→Silver→Gold with DQ checks.",
+    log_prints=True,
+)
 def main(
     summoners: list[dict] | None = None,
     max_per_player: int = 20,
@@ -231,13 +240,24 @@ def main(
 ):
     """
     Single entrypoint for the whole pipeline. Calls each stage as a subflow,
-    so every stage still gets its own run history and logs in the Prefect UI,
-    but the pipeline is deployed and scheduled as one unit.
-
-    This is the function referenced by `prefect-cloud deploy`:
-        flows/pipeline_flows.py:main
+    ensuring transform_flow only runs if ingestion completes successfully.
     """
     log.info("Starting esports-pipeline-main run")
+
+    # 1. Run ingestion flows and capture their final states
+    lol_state = lol_ingest_flow(summoners=summoners, max_per_player=max_per_player, return_state=True)
+    cs_state = cs_ingest_flow(count=cs_match_count, return_state=True)
+
+    # 2. Strict dependency check: Only run transforms if both ingests succeeded
+    if lol_state.is_completed() and cs_state.is_completed():
+        log.info("Ingestion successful. Proceeding to transform_flow.")
+        transform_flow()
+    else:
+        log.error("❌ Transform flow skipped because one or both ingestion flows failed.")
+        # Optional: Raise an exception if you want the main Prefect flow to register as a failure
+        raise RuntimeError("Pipeline failed during the ingestion stage.")
+
+    log.info("esports-pipeline-main run complete")
 
     lol_ingest_flow(summoners=summoners, max_per_player=max_per_player)
     cs_ingest_flow(count=cs_match_count)
