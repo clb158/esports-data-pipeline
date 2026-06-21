@@ -244,16 +244,6 @@ def transform_flow():
     finally:
         con.close()
 
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Main orchestrator — single deployable entrypoint
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-@flow(
-    name="esports-pipeline-main",
-    description="End-to-end run: ingest LoL + CS2 data, then transform Bronze→Silver→Gold with DQ checks.",
-    log_prints=True,
-)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Main orchestrator — single deployable entrypoint
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
