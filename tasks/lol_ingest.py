@@ -120,9 +120,9 @@ def extract_lol_match_ids(
 
 @task(name="extract-lol-batch", retries=1, cache_policy=NO_CACHE)
 def extract_lol_batch(
-    summoners: list[dict],   # [{"name": "Faker", "tag": "T1", "region": "kr"}, …]
+    summoners: list[dict],
     max_matches_each: int = 20,
-    start_time: Optional[int] = None,  # 👈 Add this parameter to pass downward
+    start_time: Optional[int] = None,  # 👈 Make sure this is pushed to GitHub!
 ) -> list[dict]:
     """
     Convenience task: given a list of summoner dicts, pull all their recent
