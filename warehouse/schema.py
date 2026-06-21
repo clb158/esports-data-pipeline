@@ -126,15 +126,27 @@ CREATE TABLE IF NOT EXISTS data_quality_checks (
 
 
 def init_warehouse() -> duckdb.DuckDBPyConnection:
-    """Create warehouse file + all tables if they don't exist yet."""
+    """Create warehouse + all tables if they don't exist yet (writer connection)."""
     con = duckdb.connect(DB_PATH)
     con.execute(DDL)
     log.info("Warehouse initialised at %s", DB_PATH)
     return con
 
 
-def get_connection() -> duckdb.DuckDBPyConnection:
-    return duckdb.connect(DB_PATH)
+def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
+    """
+    Open a connection to the warehouse.
+
+    read_only=True is recommended for anything that only queries — the
+    Streamlit dashboard, notebooks, ad hoc analysis — since it lets multiple
+    readers connect concurrently alongside the Prefect pipeline's writer
+    connection without lock contention. Note: read_only has no effect on
+    MotherDuck connections (md:...) since MotherDuck handles concurrent
+    access natively; it only matters for the local .duckdb file.
+    """
+    if DB_PATH.startswith("md:"):
+        return duckdb.connect(DB_PATH)
+    return duckdb.connect(DB_PATH, read_only=read_only)
 
 
 if __name__ == "__main__":

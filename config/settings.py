@@ -2,23 +2,35 @@
 Pipeline configuration — all knobs in one place.
 Swap in real API keys via environment variables.
 """
-from dotenv import load_dotenv
-load_dotenv()
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 WAREHOUSE_DIR = BASE_DIR / "warehouse"
 WAREHOUSE_DIR.mkdir(exist_ok=True)
 
-DB_PATH = str(WAREHOUSE_DIR / "vg_analytics.duckdb")
+# ── Warehouse target ─────────────────────────────────────────────────────
+# Local file by default. Set USE_MOTHERDUCK=true (and motherduck_token) to
+# point every component — Prefect pipeline, Streamlit dashboard, future API
+# layer — at the same shared cloud warehouse instead.
+USE_MOTHERDUCK = os.getenv("USE_MOTHERDUCK", "false").lower() == "true"
+MOTHERDUCK_DB_NAME = os.getenv("MOTHERDUCK_DB_NAME", "vg_analytics")
+
+if USE_MOTHERDUCK:
+    DB_PATH = f"md:{MOTHERDUCK_DB_NAME}"
+else:
+    DB_PATH = str(WAREHOUSE_DIR / "vg_analytics.duckdb")
 
 # ── APIs ───────────────────────────────────────────────────────────────────
 # League of Legends (Riot Games)
 RIOT_API_KEY = os.getenv("RIOT_API_KEY", "RGAPI-demo-key")
 RIOT_REGION   = os.getenv("RIOT_REGION", "na1")          # na1 | euw1 | kr …
 RIOT_BASE_URL = f"https://{RIOT_REGION}.api.riotgames.com"
+RIOT_MATCH_URL = "https://americas.api.riotgames.com"    # routing for match-v5
 
 # Counter-Strike 2 (PandaScore — free tier, 1 000 req/hr)
 PANDASCORE_TOKEN = os.getenv("PANDASCORE_TOKEN", "demo_token")

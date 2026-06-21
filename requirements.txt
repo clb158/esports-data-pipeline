@@ -1,0 +1,9 @@
+prefect>=3.0
+pandas
+requests
+duckdb
+pyarrow
+pytest
+python-dotenv
+streamlit
+plotly

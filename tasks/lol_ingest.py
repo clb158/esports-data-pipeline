@@ -22,18 +22,18 @@ import requests
 from prefect import task
 from prefect.cache_policies import NO_CACHE
 
-
 from config.settings import (
     RIOT_API_KEY,
-    RIOT_BASE_URL,
     RIOT_REGION,
     LOL_MAX_MATCHES,
     REQUEST_TIMEOUT,
 )
 
-
 log = logging.getLogger(__name__)
 
+# Maps a Riot platform region to its continental routing endpoint.
+# Account-v1 and Match-v5 both require the continental host, not the
+# platform host — e.g. a KR account is still looked up via "asia".
 REGION_ROUTING = {
     "na1":  "americas",
     "euw1": "europe",
@@ -45,8 +45,8 @@ REGION_ROUTING = {
     "la2":  "americas",
 }
 
+# Default continent, used when a summoner dict doesn't specify its own region.
 CONTINENT = REGION_ROUTING.get(RIOT_REGION.lower(), "americas")
-MATCH_URL  = f"https://{CONTINENT}.api.riotgames.com"
 
 HEADERS = {"X-Riot-Token": RIOT_API_KEY}
 
@@ -76,7 +76,12 @@ def _get(url: str, params: Optional[dict] = None) -> dict:
 # ── Tasks ─────────────────────────────────────────────────────────────────
 
 @task(name="extract-lol-summoner", retries=2, retry_delay_seconds=30, cache_policy=NO_CACHE)
-def extract_lol_summoner(summoner_name: str, tag_line: str = "NA1", continent: str = "americas") -> Optional[str]:
+def extract_lol_summoner(summoner_name: str, tag_line: str = "NA1", continent: str = CONTINENT) -> Optional[str]:
+    """
+    Resolve summoner name + tag → PUUID via Riot Account API.
+
+    Returns PUUID string, or None if not found.
+    """
     url = f"https://{continent}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{summoner_name}/{tag_line}"
     data = _get(url)
     puuid = data.get("puuid")
@@ -90,10 +95,16 @@ def extract_lol_summoner(summoner_name: str, tag_line: str = "NA1", continent: s
 @task(name="extract-lol-match-ids", retries=2, retry_delay_seconds=30, cache_policy=NO_CACHE)
 def extract_lol_match_ids(
     puuid: str,
-    continent: str = "americas",
+    continent: str = CONTINENT,
     count: int = LOL_MAX_MATCHES,
-    queue_id: int = 420,
+    queue_id: int = 420,         # 420 = Solo/Duo Ranked
 ) -> list[str]:
+    """
+    Pull the last *count* ranked match IDs for *puuid*.
+
+    queue_id options:
+      420 = Solo/Duo Ranked | 440 = Flex | 450 = ARAM | 400 = Normal Draft
+    """
     url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
     params = {"queue": queue_id, "count": count}
     ids = _get(url, params=params)
@@ -104,7 +115,8 @@ def extract_lol_match_ids(
 
 
 @task(name="extract-lol-match", retries=2, retry_delay_seconds=15, cache_policy=NO_CACHE)
-def extract_lol_match(match_id: str, continent: str = "americas") -> Optional[dict]:
+def extract_lol_match(match_id: str, continent: str = CONTINENT) -> Optional[dict]:
+    """Fetch full match JSON for a single match ID."""
     url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/{match_id}"
     data = _get(url)
     if data:
@@ -158,9 +170,16 @@ def load_raw_lol_matches(matches: list[dict], con) -> int:
 
 @task(name="extract-lol-batch", retries=1, cache_policy=NO_CACHE)
 def extract_lol_batch(
-    summoners: list[dict],
+    summoners: list[dict],   # [{"name": "Faker", "tag": "T1", "region": "kr"}, …]
     max_matches_each: int = 20,
 ) -> list[dict]:
+    """
+    Convenience task: given a list of summoner dicts, pull all their recent
+    matches and return a deduplicated flat list of match JSON objects.
+
+    Each summoner dict may specify its own "region" (e.g. "kr", "euw1").
+    If omitted, falls back to RIOT_REGION from settings.
+    """
     seen_ids: set[str] = set()
     all_matches: list[dict] = []
 
@@ -179,7 +198,7 @@ def extract_lol_batch(
             if mid in seen_ids:
                 continue
             seen_ids.add(mid)
-            time.sleep(0.05)
+            time.sleep(0.05)  # 50 ms between requests ≈ 20 req/sec
             match = extract_lol_match.fn(mid, continent)
             if match:
                 all_matches.append(match)
