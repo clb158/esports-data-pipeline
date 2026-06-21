@@ -1,7 +1,7 @@
 prefect>=3.0
 pandas
 requests
-duckdb
+duckdb==1.5.3
 pyarrow
 pytest
 python-dotenv
