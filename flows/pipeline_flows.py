@@ -283,8 +283,12 @@ def main(
         log.info("Ingestion successful. Proceeding to transform_flow.")
         transform_flow()
     else:
-        log.error("❌ Transform flow skipped because one or both ingestion flows failed.")
-        # Optional: Raise an exception if you want the main Prefect flow to register as a failure
+        # Print out the exact failure details to the console
+        if not lol_state.is_completed():
+            log.error(f"❌ LoL Ingest Failed with state: {lol_state.message}")
+        if not cs_state.is_completed():
+            log.error(f"❌ CS2 Ingest Failed with state: {cs_state.message}")
+            
         raise RuntimeError("Pipeline failed during the ingestion stage.")
 
     log.info("esports-pipeline-main run complete")
