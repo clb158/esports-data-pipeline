@@ -22,6 +22,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import os
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config.settings import DB_PATH
@@ -37,8 +38,26 @@ st.set_page_config(
 
 @st.cache_resource
 def get_connection():
-    """Open a read-only connection to the warehouse."""
-    return duckdb.connect(DB_PATH, read_only=True)
+    """Open a connection to MotherDuck or local DuckDB based on env vars."""
+    use_md = os.getenv("USE_MOTHERDUCK", "false").lower() == "true"
+    db_name = os.getenv("MOTHERDUCK_DB_NAME", DB_PATH)
+    
+    if use_md: 
+        # 1. Ensure the MotherDuck prefix is attached to the string
+        if not db_name.startswith("md:"):
+            db_name = f"md:{db_name}"
+        
+        # 2. Establish the connection FIRST
+        conn = duckdb.connect(db_name)
+        
+        # 3. Now query the connection to verify
+        active_db = conn.sql("SELECT current_database()").fetchone()[0]
+        print(f"Connected to MotherDuck database: {active_db}")
+        
+        return conn
+    else:
+        print(f"Connecting to local DuckDB at {db_name}")
+        return duckdb.connect(db_name, read_only=True)
 
 
 @st.cache_data(ttl=300)  # refresh every 5 minutes
