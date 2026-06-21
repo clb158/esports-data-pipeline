@@ -122,7 +122,7 @@ if page == "Overview":
                     labels={"avg_kda": "Average KDA", "summoner_name": "", "win_rate": "Win Rate"},
                 )
                 fig.update_layout(yaxis={"categoryorder": "total ascending"}, height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 st.info("No player data yet — waiting on the next pipeline run.")
         else:
@@ -146,7 +146,7 @@ if page == "Overview":
                 )
                 fig.update_layout(yaxis={"categoryorder": "total ascending"}, height=400)
                 fig.update_xaxes(tickformat=".0%")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 st.info("No team data yet — waiting on the next pipeline run.")
         else:
@@ -182,7 +182,7 @@ elif page == "League of Legends":
                 "avg_cs_per_min": "{:.1f}",
                 "avg_vision": "{:.1f}",
             }),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
 
@@ -199,7 +199,7 @@ elif page == "League of Legends":
                     color_continuous_scale="Viridis",
                 )
                 fig.update_yaxes(tickformat=".0%")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         with c2:
             st.subheader("Most Played Champions")
@@ -212,7 +212,7 @@ elif page == "League of Legends":
             """)
             if not champ_df.empty:
                 fig = px.pie(champ_df, names="champion_name", values="picks", hole=0.4)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         st.markdown("---")
         st.subheader("Recent Matches")
@@ -223,7 +223,7 @@ elif page == "League of Legends":
             ORDER BY processed_at DESC
             LIMIT 25
         """)
-        st.dataframe(recent, use_container_width=True, hide_index=True)
+        st.dataframe(recent, width='stretch', hide_index=True)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -250,7 +250,7 @@ elif page == "Counter-Strike 2":
                 "avg_rounds_won": "{:.1f}",
                 "avg_rounds_lost": "{:.1f}",
             }),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
 
@@ -264,7 +264,7 @@ elif page == "Counter-Strike 2":
                 fig.add_trace(go.Bar(name="Avg Rounds Won", x=df["team_name"], y=df["avg_rounds_won"]))
                 fig.add_trace(go.Bar(name="Avg Rounds Lost", x=df["team_name"], y=df["avg_rounds_lost"]))
                 fig.update_layout(barmode="group", height=420)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         with c2:
             st.subheader("Matches by Tournament")
@@ -277,7 +277,7 @@ elif page == "Counter-Strike 2":
             if not tourney_df.empty:
                 fig = px.bar(tourney_df, x="tournament_name", y="matches",
                              labels={"tournament_name": "", "matches": "Matches"})
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         st.markdown("---")
         st.subheader("Recent Matches")
@@ -288,7 +288,7 @@ elif page == "Counter-Strike 2":
             ORDER BY processed_at DESC
             LIMIT 25
         """)
-        st.dataframe(recent, use_container_width=True, hide_index=True)
+        st.dataframe(recent, width='stretch', hide_index=True)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -336,8 +336,8 @@ elif page == "Pipeline Health":
 
         if not runs.empty:
             st.dataframe(
-                runs.style.applymap(status_color, subset=["status"]),
-                use_container_width=True,
+                runs.style.map(status_color, subset=["status"]),
+                width='stretch',
                 hide_index=True,
             )
         else:
@@ -361,11 +361,11 @@ elif page == "Pipeline Health":
                     st.success("All recent data quality checks passed.")
 
                 st.dataframe(
-                    dq.style.applymap(
+                    dq.style.map(
                         lambda v: "background-color: #f8d7da" if v == False else "",
                         subset=["passed"],
                     ),
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                 )
             else:

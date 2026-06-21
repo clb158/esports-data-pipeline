@@ -14,7 +14,6 @@ import uuid
 from datetime import datetime, timezone
 
 from prefect import task
-from prefect.cache_policies import NO_CACHE
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ def _parse_lol_match(raw_json: str) -> list[dict]:
     return rows
 
 
-@task(name="transform-lol-silver", retries=1, cache_policy=NO_CACHE)
+@task(name="transform-lol-silver", retries=1)
 def transform_lol_silver(con) -> int:
     """
     Read all unprocessed rows from raw_lol_matches,
@@ -187,7 +186,7 @@ def _parse_cs_match(raw_json: str) -> list[dict]:
     return rows
 
 
-@task(name="transform-cs-silver", retries=1, cache_policy=NO_CACHE)
+@task(name="transform-cs-silver", retries=1)
 def transform_cs_silver(con) -> int:
     """Bronze → silver for CS2 matches."""
     unprocessed = con.execute("""
@@ -230,10 +229,17 @@ def transform_cs_silver(con) -> int:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 @task(name="aggregate-lol-gold", retries=1, cache_policy=NO_CACHE)
-def aggregate_lol_gold(con) -> int:
+def aggregate_lol_gold(con, min_games: int = 5) -> int:
     """
     Rebuild lol_player_agg from lol_match_stats.
     Gold layer is fully replaced on each run (small table, fast).
+
+    Filters to players with at least `min_games` recorded matches. This is
+    deliberate: every match pulled for a tracked summoner (e.g. Faker)
+    contains 9 other real players — their teammates and opponents for that
+    one game. Without this filter, every stranger who appears in a single
+    match shows up in the leaderboard with a "100% win rate" off one game,
+    which is statistical noise, not a real player profile worth tracking.
     """
     con.execute("DELETE FROM lol_player_agg")
     con.execute("""
@@ -254,13 +260,14 @@ def aggregate_lol_gold(con) -> int:
         FROM lol_match_stats
         WHERE puuid IS NOT NULL AND puuid != ''
         GROUP BY puuid
-    """)
+        HAVING COUNT(*) >= ?
+    """, [min_games])
     count = con.execute("SELECT COUNT(*) FROM lol_player_agg").fetchone()[0]
-    log.info("LoL gold aggregate rebuilt — %d player rows", count)
+    log.info("LoL gold aggregate rebuilt — %d player rows (min_games=%d)", count, min_games)
     return count
 
 
-@task(name="aggregate-cs-gold", retries=1, cache_policy=NO_CACHE)
+@task(name="aggregate-cs-gold", retries=1)
 def aggregate_cs_gold(con) -> int:
     """Rebuild cs_team_agg from cs_match_stats."""
     con.execute("DELETE FROM cs_team_agg")
